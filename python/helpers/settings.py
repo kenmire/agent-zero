@@ -65,6 +65,10 @@ class Settings(TypedDict):
     stt_silence_duration: int
     stt_waiting_timeout: int
 
+    # Local TTS settings
+    tts_enabled: bool
+    tts_model_name: str
+
     mcp_servers: str
     mcp_client_init_timeout: int
     mcp_client_tool_timeout: int
@@ -953,6 +957,8 @@ def get_default_settings() -> Settings:
         stt_silence_threshold=0.3,
         stt_silence_duration=1000,
         stt_waiting_timeout=2000,
+        tts_enabled=True,
+        tts_model_name="ResembleAI/chatterbox",
         mcp_servers='{\n    "mcpServers": {}\n}',
         mcp_client_init_timeout=5,
         mcp_client_tool_timeout=120,

@@ -383,6 +383,25 @@ class Speech {
     constructor() {
         this.synth = window.speechSynthesis;
         this.utterance = null;
+        this.ttsSettings = { tts_enabled: false };
+        this.loadTtsSettings();
+        document.addEventListener('settings-updated', () => this.loadTtsSettings());
+    }
+
+    async loadTtsSettings() {
+        try {
+            const response = await fetch('/settings_get');
+            const data = await response.json();
+            const ttsSection = data.settings.sections.find(s => s.title === 'Text to Speech');
+            if (ttsSection) {
+                ttsSection.fields.forEach(f => {
+                    const key = f.id;
+                    this.ttsSettings[key] = f.value;
+                });
+            }
+        } catch (e) {
+            console.error('Failed to load TTS settings', e);
+        }
     }
 
     stripEmojis(str) {
@@ -392,7 +411,38 @@ class Speech {
             .trim();
     }
 
-    speak(text) {
+    async speak(text) {
+        // Use local TTS if enabled; otherwise fall back to browser speech synthesis
+        if (this.ttsSettings.tts_enabled) {
+            try {
+                await this.speakLocal(text);
+                return;
+            } catch (e) {
+                console.warn('Local TTS failed, falling back to browser TTS', e);
+            }
+        }
+        this.speakBrowser(text);
+    }
+
+    async speakLocal(text) {
+        console.log('Local TTS:', text);
+        // Cancel any ongoing playback (browser synth)
+        this.stop();
+        const ctxid = window.getContext ? window.getContext() : '';
+        const resp = await fetch('/synthesize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, ctxid })
+        });
+        if (!resp.ok) throw new Error('TTS HTTP error ' + resp.status);
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error);
+        const audioDataUrl = 'data:audio/wav;base64,' + data.audio;
+        const audio = new Audio(audioDataUrl);
+        await audio.play();
+    }
+
+    speakBrowser(text) {
         console.log('Speaking:', text);
         // Stop any current utterance
         this.stop();

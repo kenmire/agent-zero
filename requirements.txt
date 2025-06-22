@@ -33,5 +33,13 @@ tiktoken==0.8.0
 unstructured==0.15.13
 unstructured-client==0.25.9
 webcolors==24.6.0
+# Local TTS dependencies
+transformers==4.38.2
+# Use torch CUDA build if available; fallback CPU okay
+# Torch with CUDA 12.1 support – adjust if using a different toolkit version
+torch==2.3.0+cu121 ; platform_system=="Linux" or platform_system=="Windows"
+soundfile==0.12.1
+scipy==1.12.0
+sentencepiece==0.2.0
 nest-asyncio==1.6.0
 crontab==1.0.1
