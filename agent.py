@@ -229,7 +229,9 @@ class AgentConfig:
             files.get_abs_path("work_dir"): {"bind": "/root", "mode": "rw"},
         }
     )
-    code_exec_ssh_enabled: bool = True
+    # Set to False so that, on a non-Docker/manual install, Agent Zero executes directly on the host.
+    # Users can still enable SSH sandboxing via CLI/config (e.g. --code_exec_ssh_enabled=true).
+    code_exec_ssh_enabled: bool = False
     code_exec_ssh_addr: str = "localhost"
     code_exec_ssh_port: int = 55022
     code_exec_ssh_user: str = "root"

@@ -140,6 +140,12 @@ def _args_override(config):
 
             setattr(config, key, value)
 
+    # Map --local_execution flag to SSH sandbox toggle (ignored inside Docker containers)
+    if runtime.has_arg("local_execution") and runtime.get_arg("local_execution") is not None:
+        if not runtime.is_dockerized():
+            # local_execution=True disables SSH sandboxing
+            config.code_exec_ssh_enabled = not runtime.get_arg("local_execution")
+
 
 def _set_runtime_config(config: AgentConfig, set: settings.Settings):
     ssh_conf = settings.get_runtime_config(set)

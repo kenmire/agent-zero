@@ -2,6 +2,7 @@ import select
 import subprocess
 import time
 import sys
+from python.helpers.print_style import PrintStyle
 from typing import Optional, Tuple
 
 class LocalInteractiveSession:
@@ -11,6 +12,7 @@ class LocalInteractiveSession:
 
     async def connect(self):
         # Start a new subprocess with the appropriate shell for the OS
+        PrintStyle.warning("Local execution mode active – commands will run directly on host. Ensure you trust the agent and inputs.")
         if sys.platform.startswith('win'):
             # Windows
             self.process = subprocess.Popen(

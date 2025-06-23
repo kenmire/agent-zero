@@ -27,6 +27,12 @@ def initialize():
         help="Use cloudflare tunnel for public URL",
     )
     parser.add_argument(
+        "--code_exec_ssh_enabled", type=bool, default=None, help="Enable SSH sandbox execution (override)"
+    )
+    parser.add_argument(
+        "--local_execution", type=bool, default=None, help="Run commands directly on host (unsandboxed). Equivalent to --code_exec_ssh_enabled=false"
+    )
+    parser.add_argument(
         "--development", type=bool, default=False, help="Development mode"
     )
 
