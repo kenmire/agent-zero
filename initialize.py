@@ -126,7 +126,13 @@ def _args_override(config):
         if hasattr(config, key):
             # conversion based on type of config[key]
             if isinstance(getattr(config, key), bool):
-                value = value.lower().strip() == "true"
+                # ignore if value is None (arg provided without value or missing)
+                if value is None:
+                    continue
+                if isinstance(value, str):
+                    value = value.lower().strip() == "true"
+                else:
+                    value = bool(value)
             elif isinstance(getattr(config, key), int):
                 value = int(value)
             elif isinstance(getattr(config, key), float):
