@@ -148,6 +148,10 @@ def _args_override(config):
 
 
 def _set_runtime_config(config: AgentConfig, set: settings.Settings):
+    # Apply persistent local_execution setting (true disables ssh sandbox)
+    if hasattr(set, "local_execution") and set["local_execution"]:
+        config.code_exec_ssh_enabled = False
+
     ssh_conf = settings.get_runtime_config(set)
     for key, value in ssh_conf.items():
         if hasattr(config, key):

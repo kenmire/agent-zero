@@ -65,6 +65,8 @@ class Settings(TypedDict):
     stt_silence_duration: int
     stt_waiting_timeout: int
 
+    local_execution: bool
+
     mcp_servers: str
     mcp_client_init_timeout: int
     mcp_client_tool_timeout: int
@@ -541,6 +543,16 @@ def convert_out(settings: Settings) -> SettingsOutput:
         }
     )
 
+    agent_fields.append(
+        {
+            "id": "local_execution",
+            "title": "Local Execution",
+            "description": "Enable local execution of functions.",
+            "type": "switch",
+            "value": settings["local_execution"],
+        }
+    )
+
     agent_section: SettingsSection = {
         "id": "agent",
         "title": "Agent Config",
@@ -860,7 +872,7 @@ def normalize_settings(settings: Settings) -> Settings:
                 copy[key] = value  # make default instead
 
     # mcp server token is set automatically
-    copy["mcp_server_token"] = create_auth_token()
+    copy["mcp_server_token"] = create_auth_token() #TODO - ugly, token in settings is generated from dotenv and does not always correspond
 
     return copy
 
@@ -953,6 +965,7 @@ def get_default_settings() -> Settings:
         stt_silence_threshold=0.3,
         stt_silence_duration=1000,
         stt_waiting_timeout=2000,
+        local_execution=False,
         mcp_servers='{\n    "mcpServers": {}\n}',
         mcp_client_init_timeout=5,
         mcp_client_tool_timeout=120,
