@@ -195,10 +195,13 @@ class CodeExecution(Tool):
         sleep_time=0.1,
     ):
         # Common shell prompt regex patterns (add more as needed)
+        # Extend prompt patterns to cover Windows cmd.exe prompts as well.
+        # Typical cmd prompt: "C:\\Users\\username>" or similar.
         prompt_patterns = [
             re.compile(r"\\(venv\\).+[$#] ?$"),  # (venv) ...$ or (venv) ...#
-            re.compile(r"root@[^:]+:[^#]+# ?$"),  # root@container:~#
+            re.compile(r"root@[^:]+:[^#]+# ?$"),    # root@container:~#
             re.compile(r"[a-zA-Z0-9_.-]+@[^:]+:[^$#]+[$#] ?$"),  # user@host:~$
+            re.compile(r"[A-Z]:\\\\[^>]*> ?$"),              # Windows cmd.exe prompt like C:\path>
         ]
 
         start_time = time.time()
