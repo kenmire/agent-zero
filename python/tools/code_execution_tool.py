@@ -190,7 +190,7 @@ class CodeExecution(Tool):
         session=0,
         reset_full_output=True,
         first_output_timeout=30,  # Wait up to x seconds for first output
-        between_output_timeout=15,  # Wait up to x seconds between outputs
+        between_output_timeout=30,  # Wait up to x seconds between outputs
         max_exec_timeout=180,  #hard cap on total runtime
         sleep_time=0.1,
     ):
