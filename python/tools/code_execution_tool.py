@@ -256,10 +256,28 @@ class CodeExecution(Tool):
         debug_print(f"Timeouts: first={first_output_timeout}s, between={between_output_timeout}s, max={max_exec_timeout}s")
 
         # Common shell prompt regex patterns (add more as needed)
+        # Extend prompt patterns to cover Windows cmd.exe, PowerShell, and WSL prompts as well
         prompt_patterns = [
+            # Linux/Unix patterns
             re.compile(r"\\(venv\\).+[$#] ?$"),  # (venv) ...$ or (venv) ...#
             re.compile(r"root@[^:]+:[^#]+# ?$"),    # root@container:~#
             re.compile(r"[a-zA-Z0-9_.-]+@[^:]+:[^$#]+[$#] ?$"),  # user@host:~$
+
+            # Windows CMD patterns
+            re.compile(r"[A-Z]:\\\\[^>]*> ?$"),              # Windows cmd.exe prompt like C:\path>
+            re.compile(r"[A-Z]:[^>]*> ?$"),                  # Simple Windows prompt like C:>
+            re.compile(r"[^>]*> ?$"),                        # Generic command prompt ending with >
+
+            # Windows PowerShell patterns
+            re.compile(r"PS [A-Z]:\\\\[^>]*> ?$"),           # Windows PowerShell prompt like PS C:\path>
+            re.compile(r"PS [^>]*> ?$"),                     # Simple PowerShell prompt like PS>
+
+            # WSL patterns
+            re.compile(r"[a-zA-Z0-9_.-]+@[^:]+:/[^$]+ ?[$#] ?$"),  # WSL prompt like user@host:/path$
+            re.compile(r"[a-zA-Z0-9_.-]+@[^:]+:~[$#] ?$"),         # WSL home prompt like user@host:~$
+
+            # Generic patterns that might catch other prompts
+            re.compile(r"[$#>] ?$"),                         # Lines ending with $, #, or >
         ]
         debug_print(f"Initialized {len(prompt_patterns)} prompt patterns for detection")
 
@@ -298,14 +316,18 @@ class CodeExecution(Tool):
                 got_output = True
 
                 # Check for shell prompt at the end of output
-                last_lines = truncated_output.splitlines()[-3:] if truncated_output else []
+                last_lines = truncated_output.splitlines()[-5:] if truncated_output else []
                 debug_print(f"Checking last {len(last_lines)} lines for shell prompt")
-                for line in last_lines:
-                    for pat in prompt_patterns:
-                        if pat.search(line.strip()):
-                            debug_print(f"Shell prompt detected: '{line.strip()}'")
+                for i, line in enumerate(last_lines):
+                    stripped_line = line.strip()
+                    debug_print(f"Checking line {i+1}/{len(last_lines)}: '{stripped_line}'")
+                    for j, pat in enumerate(prompt_patterns):
+                        pattern_str = pat.pattern
+                        debug_print(f"  Testing pattern {j+1}/{len(prompt_patterns)}: {pattern_str}")
+                        if pat.search(stripped_line):
+                            debug_print(f"Shell prompt detected: '{stripped_line}' matched pattern: {pattern_str}")
                             PrintStyle.info(
-                                "Detected shell prompt, returning output early."
+                                f"Detected shell prompt: '{stripped_line}', returning output early."
                             )
                             return truncated_output
 
