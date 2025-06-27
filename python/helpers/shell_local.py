@@ -82,33 +82,26 @@ class LocalInteractiveSession:
         debug_print(f"Starting read loop at {start}")
 
         while timeout <= 0 or time.time() - start < timeout:
-            elapsed = time.time() - start
-            debug_print(f"Read loop iteration at {elapsed:.2f}s")
-            rlist, _, _ = select.select([self.process.stdout], [], [], 0.1)
-            if not rlist:
-                # Only log every second to avoid excessive logging
-                if int(elapsed) % 1 == 0 and elapsed > 0:
-                    debug_print(f"No data ready after {elapsed:.2f}s - continuing to poll")
-                continue  # nothing ready – keep polling
+            # Wait until either new data arrives in the FD OR we already have data
+            if not self.process.stdout.buffer.peek(1):  # nothing buffered yet
+                r, _, _ = select.select([self.process.stdout], [], [], 0.1)
+                if not r:
+                    continue  # poll again
 
-            debug_print("Data available - reading")
-            while True:  # <-- drain everything available *now*
-                chunk = self.process.stdout.readline()
-                if chunk == "":  # EOF
-                    debug_print("EOF detected")
+            # Drain everything already buffered inside Python
+            while True:
+                line = self.process.stdout.readline()
+                if line == "":  # EOF
                     eof = True
                     break
-                chunk_len = len(chunk)
-                debug_print(f"Read chunk of {chunk_len} bytes")
-                partial_output += chunk
-                self.full_output += chunk
+                partial_output += line
+                self.full_output += line
 
-                # still buffered?
-                if not select.select([self.process.stdout], [], [], 0)[0]:
-                    debug_print("Buffer empty - breaking inner read loop")
-                    break  # buffer empty – go back to outer poll
+                # Stop when the Python buffer is now empty
+                if not self.process.stdout.buffer.peek(1):
+                    break
+
             if eof:
-                debug_print("Breaking outer loop due to EOF")
                 break
 
         total_elapsed = time.time() - start
