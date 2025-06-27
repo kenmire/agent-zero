@@ -56,6 +56,7 @@ class LocalInteractiveSession:
         start = time.time()
 
         while timeout <= 0 or time.time() - start < timeout:
+            print('DEBUG-PATCH-ACTIVE', flush=True)
             rlist, _, _ = select.select([self.process.stdout], [], [], 0.1)
             if not rlist:
                 continue  # keep polling until EOF/timeout
