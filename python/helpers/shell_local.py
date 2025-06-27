@@ -3,12 +3,53 @@ import subprocess
 import time
 import sys
 import asyncio
+import os
 from python.helpers.print_style import PrintStyle
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List, Any
 
 # Debug print function
 def debug_print(message):
     PrintStyle(background_color="#E8F8F5", font_color="#1B4F72", bold=True).print(f"[DEBUG] [LocalShell] {message}")
+
+def safe_select(read_list: List[Any], timeout: float = 0.1) -> List[Any]:
+    """
+    Safely perform a select operation with fallback for Windows.
+
+    On Windows, select() might not work correctly with file objects from subprocess,
+    so we use a simple polling approach as a fallback.
+
+    Args:
+        read_list: List of file objects to check for readability
+        timeout: Maximum time to wait for data
+
+    Returns:
+        List of file objects that are ready for reading
+    """
+    try:
+        # Try standard select first
+        rlist, _, _ = select.select(read_list, [], [], timeout)
+        return rlist
+    except (select.error, ValueError, TypeError) as e:
+        # Fallback for Windows or if select fails
+        debug_print(f"Select failed ({str(e)}), using fallback polling method")
+
+        # Simple polling approach - check if any data is available
+        result = []
+        for fd in read_list:
+            try:
+                # For text mode file objects
+                if hasattr(fd, 'buffer'):
+                    # Try to peek at the buffer without blocking
+                    if fd.buffer.peek(1):
+                        result.append(fd)
+                # Direct check
+                elif hasattr(fd, 'peek'):
+                    if fd.peek(1):
+                        result.append(fd)
+            except Exception as e:
+                debug_print(f"Error checking file descriptor: {str(e)}")
+
+        return result
 
 class LocalInteractiveSession:
     def __init__(self):
@@ -77,8 +118,9 @@ class LocalInteractiveSession:
         2. The readline() call reads that partial line and waits for more data
         3. The peek(1) operation also waits indefinitely for more data
 
-        The solution adds timeouts to peek operations and uses select() to check
-        for data availability before attempting to read, preventing indefinite blocking.
+        The solution uses a simpler approach with select() to check for data availability
+        and direct reading from the stdout file object, avoiding the complex peek operations
+        that might be causing issues with text mode vs binary mode.
 
         Args:
             timeout: Maximum time to wait for output (0 = wait indefinitely)
@@ -100,87 +142,100 @@ class LocalInteractiveSession:
         start = time.time()
         debug_print(f"Starting read loop at {start}")
 
-        # Maximum time to wait for a peek operation in seconds
-        peek_timeout = 0.5
-
         while timeout <= 0 or time.time() - start < timeout:
-            # Drain everything already buffered inside Python
-            buf = self.process.stdout.buffer  # underlying BufferedReader
             current_time = time.time()
             elapsed = current_time - start
-            debug_print(f"Outer loop iteration at {elapsed:.2f}s - checking buffer")
+            debug_print(f"Outer loop iteration at {elapsed:.2f}s - checking for data")
 
-            # Use select to check if data is available before peeking
-            rlist, _, _ = select.select([self.process.stdout], [], [], 0.1)
+            # Use safe_select to check if data is available for reading on stdout or stderr
+            # This is more reliable and works on all platforms including Windows
+            rlist = safe_select([self.process.stdout, self.process.stderr], timeout=0.1)
             if not rlist:
                 # Only log every second to avoid excessive logging
                 if int(elapsed) % 1 == 0:
                     debug_print(f"No data ready after {elapsed:.2f}s - continuing to poll")
                 continue  # nothing ready – keep polling
 
-            # Safe peek with timeout
-            peek_start = time.time()
-            try:
-                # Set a timeout for the peek operation
-                peek_result = b''
-                while time.time() - peek_start < peek_timeout:
-                    peek_result = buf.peek(1)
-                    if peek_result:
-                        break
-                    await asyncio.sleep(0.01)  # Small sleep to avoid CPU spinning
+            debug_print(f"Data available for reading on {len(rlist)} file descriptors - starting read loop")
 
-                debug_print(f"Buffer peek result: {len(peek_result)} bytes (took {time.time() - peek_start:.3f}s)")
-
-                # If no data after timeout, continue to next iteration
-                if not peek_result:
-                    debug_print(f"Peek timeout after {peek_timeout}s - continuing to next iteration")
-                    continue
-            except Exception as e:
-                debug_print(f"Error during peek: {str(e)} - continuing")
-                continue
-
+            # Data is available, read it directly without additional checks
             drain_count = 0
-            while True:  # keep draining
-                debug_print(f"Inner loop iteration {drain_count} - reading line")
-
-                # Use select with a short timeout before readline to avoid blocking
-                rlist, _, _ = select.select([self.process.stdout], [], [], 0.1)
+            while True:
+                # Check if more data is available without blocking on stdout or stderr
+                rlist = safe_select([self.process.stdout, self.process.stderr], timeout=0)
                 if not rlist:
-                    debug_print("No data available for reading - breaking inner loop")
+                    debug_print(f"No more data available after reading {drain_count} lines - breaking inner loop")
                     break
 
                 try:
-                    line = self.process.stdout.readline()
-                    if line == "":  # EOF / would-block
-                        debug_print("EOF or would-block detected")
-                        eof = True
+                    # Determine which file descriptor to read from
+                    read_from_stdout = self.process.stdout in rlist
+                    read_from_stderr = self.process.stderr in rlist
+
+                    line = ""
+                    source = ""
+
+                    # Read from the appropriate file descriptor
+                    if read_from_stdout:
+                        try:
+                            line = self.process.stdout.readline()
+                            source = "stdout"
+                        except Exception as e:
+                            debug_print(f"Error reading from stdout: {str(e)}")
+                            # Try a direct read as fallback (especially for Windows)
+                            try:
+                                if hasattr(self.process.stdout, 'buffer'):
+                                    chunk = self.process.stdout.buffer.read1(4096)
+                                    if chunk:
+                                        line = chunk.decode('utf-8', errors='replace')
+                                        source = "stdout (direct)"
+                                        debug_print(f"Direct read from stdout successful: {len(line)} bytes")
+                            except Exception as e2:
+                                debug_print(f"Direct read from stdout failed: {str(e2)}")
+                    elif read_from_stderr:
+                        try:
+                            line = self.process.stderr.readline()
+                            source = "stderr"
+                        except Exception as e:
+                            debug_print(f"Error reading from stderr: {str(e)}")
+                            # Try a direct read as fallback (especially for Windows)
+                            try:
+                                if hasattr(self.process.stderr, 'buffer'):
+                                    chunk = self.process.stderr.buffer.read1(4096)
+                                    if chunk:
+                                        line = chunk.decode('utf-8', errors='replace')
+                                        source = "stderr (direct)"
+                                        debug_print(f"Direct read from stderr successful: {len(line)} bytes")
+                            except Exception as e2:
+                                debug_print(f"Direct read from stderr failed: {str(e2)}")
+
+                    if not line:  # EOF
+                        debug_print(f"EOF detected on {source}")
+                        if source.startswith("stdout"):  # Only consider EOF on stdout as true EOF
+                            eof = True
                         break
+
                     line_len = len(line)
-                    debug_print(f"Read line of {line_len} bytes")
+                    debug_print(f"Read line of {line_len} bytes from {source}: {line.strip()}")
                     partial_output += line
                     self.full_output += line
                     drain_count += 1
+
+                    # If we've read a significant amount of data, break to allow processing
+                    if drain_count > 100:
+                        debug_print(f"Read {drain_count} lines - breaking to allow processing")
+                        break
+
                 except Exception as e:
                     debug_print(f"Error during readline: {str(e)} - breaking inner loop")
                     break
 
-                # Safe peek with timeout to check if buffer is empty
-                peek_start = time.time()
-                try:
-                    peek_result = b''
-                    while time.time() - peek_start < peek_timeout:
-                        peek_result = buf.peek(1)
-                        if peek_result or time.time() - peek_start >= peek_timeout:
-                            break
-                        await asyncio.sleep(0.01)
+            debug_print(f"Completed read cycle, read {drain_count} lines")
 
-                    debug_print(f"Buffer peek after read: {len(peek_result)} bytes")
-                    if not peek_result:  # returns b'' if buffer empty
-                        debug_print(f"Buffer empty after {drain_count} reads - breaking inner loop")
-                        break
-                except Exception as e:
-                    debug_print(f"Error during peek after read: {str(e)} - breaking inner loop")
-                    break
+            # If we got some output, we can return it immediately
+            if partial_output:
+                debug_print(f"Got partial output ({len(partial_output)} bytes) - returning early")
+                break
 
             if eof:
                 debug_print("Breaking outer loop due to EOF")
