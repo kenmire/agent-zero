@@ -84,26 +84,46 @@ class LocalInteractiveSession:
         while timeout <= 0 or time.time() - start < timeout:
             # Drain everything already buffered inside Python
             buf = self.process.stdout.buffer  # underlying BufferedReader
+            current_time = time.time()
+            elapsed = current_time - start
+            debug_print(f"Outer loop iteration at {elapsed:.2f}s - checking buffer")
 
+            debug_print(f"Buffer peek result: {len(buf.peek(1))} bytes")
+
+            drain_count = 0
             while True:  # keep draining
+                debug_print(f"Inner loop iteration {drain_count} - reading line")
                 line = self.process.stdout.readline()
                 if line == "":  # EOF / would-block
+                    debug_print("EOF or would-block detected")
                     eof = True
                     break
+                line_len = len(line)
+                debug_print(f"Read line of {line_len} bytes")
                 partial_output += line
                 self.full_output += line
+                drain_count += 1
 
                 # stop only when Python’s buffer is empty
-                if not buf.peek(1):  # returns b'' if buffer empty
+                peek_result = buf.peek(1)
+                debug_print(f"Buffer peek after read: {len(peek_result)} bytes")
+                if not peek_result:  # returns b'' if buffer empty
+                    debug_print(f"Buffer empty after {drain_count} reads - breaking inner loop")
                     break
 
             if eof:
+                debug_print("Breaking outer loop due to EOF")
                 break
 
             if not buf.peek(1):  # no data already buffered
+                debug_print("No data in buffer, checking if more data is available")
                 rlist, _, _ = select.select([self.process.stdout], [], [], 0.1)
                 if not rlist:
+                    # Only log every second to avoid excessive logging
+                    if int(elapsed) % 1 == 0:
+                        debug_print(f"No data ready after {elapsed:.2f}s - continuing to poll")
                     continue  # still nothing – poll again
+                debug_print("Data available for reading in next iteration")
 
         total_elapsed = time.time() - start
         debug_print(f"Read completed after {total_elapsed:.2f}s")
