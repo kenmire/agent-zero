@@ -64,8 +64,6 @@ class LocalInteractiveSession:
                 partial_output += line
                 self.full_output += line
 
-            else:
-                break  # No data available
 
         if not partial_output:
             return self.full_output, None
