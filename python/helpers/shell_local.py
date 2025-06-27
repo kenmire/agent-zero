@@ -53,18 +53,27 @@ class LocalInteractiveSession:
         if reset_full_output:
             self.full_output = ''
         partial_output = ''
+        eof = False
         start = time.time()
 
         while timeout <= 0 or time.time() - start < timeout:
-            print('DEBUG-PATCH-ACTIVE', flush=True)
             rlist, _, _ = select.select([self.process.stdout], [], [], 0.1)
             if not rlist:
-                continue  # keep polling until EOF/timeout
-            line = self.process.stdout.readline()
-            if line == '':  # EOF
+                continue  # nothing ready – keep polling
+
+            while True:  # <-- drain everything available *now*
+                chunk = self.process.stdout.readline()
+                if chunk == "":  # EOF
+                    eof = True
+                    break
+                partial_output += chunk
+                self.full_output += chunk
+
+                # still buffered?
+                if not select.select([self.process.stdout], [], [], 0)[0]:
+                    break  # buffer empty – go back to outer poll
+            if eof:
                 break
-            partial_output += line
-            self.full_output += line
 
         if not partial_output:
             return self.full_output, None
