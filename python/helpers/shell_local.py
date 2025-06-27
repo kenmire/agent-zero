@@ -140,6 +140,7 @@ class LocalInteractiveSession:
         partial_output = ''
         eof = False
         start = time.time()
+        last_data_time = start  # Initialize last_data_time
         debug_print(f"Starting read loop at {start}")
 
         while timeout <= 0 or time.time() - start < timeout:
@@ -221,6 +222,10 @@ class LocalInteractiveSession:
                     self.full_output += line
                     drain_count += 1
 
+                    # Update the last_data_time whenever we receive new data
+                    last_data_time = time.time()
+                    debug_print(f"Updated last_data_time to {last_data_time:.2f}")
+
                     # If we've read a significant amount of data, break to allow processing
                     if drain_count > 100:
                         debug_print(f"Read {drain_count} lines - breaking to allow processing")
@@ -232,10 +237,26 @@ class LocalInteractiveSession:
 
             debug_print(f"Completed read cycle, read {drain_count} lines")
 
-            # If we got some output, we can return it immediately
+            # Instead of returning immediately when we get output, continue reading
+            # to ensure we get all available output
             if partial_output:
-                debug_print(f"Got partial output ({len(partial_output)} bytes) - returning early")
-                break
+                debug_print(f"Got partial output ({len(partial_output)} bytes) - continuing to check for more data")
+
+                # Continue reading until we haven't seen new data for a certain period
+                # This ensures we capture all output, even if it comes in bursts
+                # Note: last_data_time is updated whenever we receive new data in the inner loop
+
+                # Add a small sleep to give the subprocess more time to produce output
+                await asyncio.sleep(0.05)
+
+                # Only break out if we've been reading for at least 0.5 seconds total
+                # AND we haven't seen new data for at least 0.2 seconds
+                if time.time() - start > 0.5 and time.time() - last_data_time > 0.2:
+                    # Check if there's more data available
+                    rlist = safe_select([self.process.stdout, self.process.stderr], timeout=0.1)
+                    if not rlist:
+                        debug_print(f"No more data available after waiting {time.time() - last_data_time:.2f}s since last data - breaking outer loop")
+                        break
 
             if eof:
                 debug_print("Breaking outer loop due to EOF")
