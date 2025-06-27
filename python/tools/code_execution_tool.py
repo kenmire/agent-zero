@@ -256,13 +256,10 @@ class CodeExecution(Tool):
         debug_print(f"Timeouts: first={first_output_timeout}s, between={between_output_timeout}s, max={max_exec_timeout}s")
 
         # Common shell prompt regex patterns (add more as needed)
-        # Extend prompt patterns to cover Windows cmd.exe prompts as well.
-        # Typical cmd prompt: "C:\\Users\\username>" or similar.
         prompt_patterns = [
             re.compile(r"\\(venv\\).+[$#] ?$"),  # (venv) ...$ or (venv) ...#
             re.compile(r"root@[^:]+:[^#]+# ?$"),    # root@container:~#
             re.compile(r"[a-zA-Z0-9_.-]+@[^:]+:[^$#]+[$#] ?$"),  # user@host:~$
-            re.compile(r"[A-Z]:\\\\[^>]*> ?$"),              # Windows cmd.exe prompt like C:\path>
         ]
         debug_print(f"Initialized {len(prompt_patterns)} prompt patterns for detection")
 
