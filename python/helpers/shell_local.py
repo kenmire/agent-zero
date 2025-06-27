@@ -143,6 +143,9 @@ class LocalInteractiveSession:
         last_data_time = start  # Initialize last_data_time
         debug_print(f"Starting read loop at {start}")
 
+        # Track if we've seen any output at all during this call
+        got_any_output = False
+
         while timeout <= 0 or time.time() - start < timeout:
             current_time = time.time()
             elapsed = current_time - start
@@ -150,7 +153,8 @@ class LocalInteractiveSession:
 
             # Use safe_select to check if data is available for reading on stdout or stderr
             # This is more reliable and works on all platforms including Windows
-            rlist = safe_select([self.process.stdout, self.process.stderr], timeout=0.1)
+            # Increased timeout to 0.2 seconds to give more time to detect data
+            rlist = safe_select([self.process.stdout, self.process.stderr], timeout=0.2)
             if not rlist:
                 # Only log every second to avoid excessive logging
                 if int(elapsed) % 1 == 0:
@@ -242,18 +246,27 @@ class LocalInteractiveSession:
             if partial_output:
                 debug_print(f"Got partial output ({len(partial_output)} bytes) - continuing to check for more data")
 
+                # Mark that we've seen output during this call
+                got_any_output = True
+
                 # Continue reading until we haven't seen new data for a certain period
                 # This ensures we capture all output, even if it comes in bursts
                 # Note: last_data_time is updated whenever we receive new data in the inner loop
 
-                # Add a small sleep to give the subprocess more time to produce output
-                await asyncio.sleep(0.05)
+                # Add a sleep to give the subprocess more time to produce output
+                # Increased from 0.05 to 0.1 seconds
+                await asyncio.sleep(0.1)
 
-                # Only break out if we've been reading for at least 0.5 seconds total
-                # AND we haven't seen new data for at least 0.2 seconds
-                if time.time() - start > 0.5 and time.time() - last_data_time > 0.2:
-                    # Check if there's more data available
-                    rlist = safe_select([self.process.stdout, self.process.stderr], timeout=0.1)
+                # Reset partial_output to avoid accumulating it across iterations
+                # This ensures we only consider output from the current iteration
+                partial_output = ''
+
+                # Only break out if we've been reading for at least 1.0 seconds total
+                # AND we haven't seen new data for at least 0.5 seconds
+                # Increased both thresholds to give more time for output
+                if time.time() - start > 1.0 and time.time() - last_data_time > 0.5:
+                    # Check if there's more data available with increased timeout
+                    rlist = safe_select([self.process.stdout, self.process.stderr], timeout=0.2)
                     if not rlist:
                         debug_print(f"No more data available after waiting {time.time() - last_data_time:.2f}s since last data - breaking outer loop")
                         break
@@ -264,10 +277,15 @@ class LocalInteractiveSession:
 
         total_elapsed = time.time() - start
         debug_print(f"Read completed after {total_elapsed:.2f}s")
-        debug_print(f"Collected output: full={len(self.full_output)} bytes, partial={len(partial_output)} bytes")
+        debug_print(f"Collected output: full={len(self.full_output)} bytes")
 
-        if not partial_output:
-            debug_print("No partial output collected, returning full_output only")
-            return self.full_output, None
-        debug_print("Returning both full and partial output")
-        return self.full_output, partial_output
+        # If we got any output during this call, return the full output as both full and partial
+        # This ensures the calling code gets all the output we collected
+        if got_any_output:
+            debug_print("Output was collected during this call, returning full output")
+            # Return the full output as the partial output to ensure it's processed by the caller
+            return self.full_output, self.full_output
+
+        # If we didn't get any output, return None for partial_output
+        debug_print("No output collected during this call")
+        return self.full_output, None
