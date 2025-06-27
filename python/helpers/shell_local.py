@@ -59,12 +59,11 @@ class LocalInteractiveSession:
             rlist, _, _ = select.select([self.process.stdout], [], [], 0.1)
             if rlist:
                 line = self.process.stdout.readline()  # type: ignore
-                if line:
-                    partial_output += line
-                    self.full_output += line
-                    time.sleep(0.1)
-                else:
-                    break  # No more output
+                if line == "":  # EOF – child closed stdout
+                    break
+                partial_output += line
+                self.full_output += line
+
             else:
                 break  # No data available
 
