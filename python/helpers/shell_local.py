@@ -82,27 +82,28 @@ class LocalInteractiveSession:
         debug_print(f"Starting read loop at {start}")
 
         while timeout <= 0 or time.time() - start < timeout:
-            # Wait until either new data arrives in the FD OR we already have data
-            if not self.process.stdout.buffer.peek(1):  # nothing buffered yet
-                r, _, _ = select.select([self.process.stdout], [], [], 0.1)
-                if not r:
-                    continue  # poll again
-
             # Drain everything already buffered inside Python
-            while True:
+            buf = self.process.stdout.buffer  # underlying BufferedReader
+
+            while True:  # keep draining
                 line = self.process.stdout.readline()
-                if line == "":  # EOF
+                if line == "":  # EOF / would-block
                     eof = True
                     break
                 partial_output += line
                 self.full_output += line
 
-                # Stop when the Python buffer is now empty
-                if not self.process.stdout.buffer.peek(1):
+                # stop only when Python’s buffer is empty
+                if not buf.peek(1):  # returns b'' if buffer empty
                     break
 
             if eof:
                 break
+
+            if not buf.peek(1):  # no data already buffered
+                rlist, _, _ = select.select([self.process.stdout], [], [], 0.1)
+                if not rlist:
+                    continue  # still nothing – poll again
 
         total_elapsed = time.time() - start
         debug_print(f"Read completed after {total_elapsed:.2f}s")
