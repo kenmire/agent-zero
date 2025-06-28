@@ -360,29 +360,15 @@ class LocalInteractiveSession:
         if new_data:
             stripped = partial_output.strip()
             if (
-                    stripped
-                    and len(stripped.splitlines()) == 1
-                    and re.match(r'.*[#$>%] ?$', stripped)
+                stripped
+                and len(stripped.splitlines()) == 1
+                and re.match(r'.*[#$>%] ?$', stripped)
             ):
                 debug_print("Only prompt received – not treating as new data")
                 new_data = False
 
-        # If no real new data, ensure legacy flag is also false
-        if not new_data:
-            got_any_output = False
-
-        # If real new data exists, return it so the caller keeps reading
         if new_data:
-            debug_print("Returning NEW partial output to caller")
+            debug_print('Returning NEW partial output to caller')
             return self.full_output, partial_output or self.full_output
-
-        if got_any_output:
-            debug_print("Output was collected during this call, returning full output")
-            # Return the full output as the partial output to ensure it's processed by the caller
-            # This is critical to ensure all output is processed by the caller
-            debug_print(f"Full output content: {self.full_output}")
-            return self.full_output, self.full_output
-
-        # If we didn't get any output, return None for partial_output
-        debug_print("No output collected during this call")
+        debug_print('No new data – signalling completion with None')
         return self.full_output, None
