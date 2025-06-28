@@ -4,6 +4,7 @@ import time
 import sys
 import asyncio
 import os
+import re
 from python.helpers.print_style import PrintStyle
 from typing import Optional, Tuple, List, Any
 
@@ -190,6 +191,7 @@ class LocalInteractiveSession:
 
         # Track if we've seen any output at all during this call
         got_any_output = False
+        new_data = False  # track NEW bytes this call
 
         while timeout <= 0 or time.time() - start < timeout:
             current_time = time.time()
@@ -291,6 +293,7 @@ class LocalInteractiveSession:
                     debug_print(f"Read line of {line_len} bytes from {source}: {line.strip()}")
                     partial_output += line
                     self.full_output += line
+                    new_data = True  # mark fresh bytes
                     drain_count += 1
 
                     # Update the last_data_time whenever we receive new data
@@ -353,6 +356,20 @@ class LocalInteractiveSession:
 
         # If we got any output during this call, return the full output as both full and partial
         # This ensures the calling code gets all the output we collected
+        if new_data:
+        if not new_data:
+            got_any_output = False
+            stripped = partial_output.strip()
+            if stripped and len(stripped.splitlines()) == 1 and re.match(r'.*[#$>%] ?$', stripped):
+                debug_print("Only prompt received – not treating as new data")
+                new_data = False
+
+        if new_data:
+        if not new_data:
+            got_any_output = False
+            debug_print("Returning NEW partial output to caller")
+            return self.full_output, partial_output or self.full_output
+
         if got_any_output:
             debug_print("Output was collected during this call, returning full output")
             # Return the full output as the partial output to ensure it's processed by the caller
