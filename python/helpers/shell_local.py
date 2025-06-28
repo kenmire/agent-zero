@@ -356,17 +356,23 @@ class LocalInteractiveSession:
 
         # If we got any output during this call, return the full output as both full and partial
         # This ensures the calling code gets all the output we collected
+        # Check if the only fresh bytes are a single prompt line
         if new_data:
-        if not new_data:
-            got_any_output = False
             stripped = partial_output.strip()
-            if stripped and len(stripped.splitlines()) == 1 and re.match(r'.*[#$>%] ?$', stripped):
+            if (
+                    stripped
+                    and len(stripped.splitlines()) == 1
+                    and re.match(r'.*[#$>%] ?$', stripped)
+            ):
                 debug_print("Only prompt received – not treating as new data")
                 new_data = False
 
-        if new_data:
+        # If no real new data, ensure legacy flag is also false
         if not new_data:
             got_any_output = False
+
+        # If real new data exists, return it so the caller keeps reading
+        if new_data:
             debug_print("Returning NEW partial output to caller")
             return self.full_output, partial_output or self.full_output
 
